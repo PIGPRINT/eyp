@@ -1,0 +1,336 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Millennium</title>
+<style>
+  /* colour themes = just different values for the same 4 variables */
+  :root { --lcd1:#0d2a5c; --lcd2:#2a5aa8; --glow:#9fd0ff; --accent:#3a6fd8;
+          /* light comes from the top-left: every shadow falls down-right */
+          --drop:1px 2px 3px rgba(0,0,0,.45); --well:inset 1px 2px 4px rgba(0,0,0,.45), 0 1px rgba(255,255,255,.8);
+          /* brushed metal disc: a cone of light/dark bands, like the knobs in a real hi-fi */
+          --metal:radial-gradient(circle at 40% 30%, rgba(255,255,255,.75), transparent 55%),
+                  conic-gradient(#d7d9dd, #9ea2a9, #eceef1, #8f939a, #dfe1e4, #a3a7ae, #e6e8eb, #959aa1, #d7d9dd); }
+  /* "album": every colour is mixed from the cover's main colour (--album, set by widget.js) */
+  body.theme-album    { --lcd1:color-mix(in srgb, var(--album) 22%, #05070c); --lcd2:color-mix(in srgb, var(--album) 60%, #0a0d14);
+                        --glow:color-mix(in srgb, var(--album) 45%, white); --accent:var(--album); }
+  body.theme-green    { --lcd1:#0b3a1c; --lcd2:#1f7a3d; --glow:#9effb8; --accent:#2f9e57; }
+  body.theme-amber    { --lcd1:#3a2205; --lcd2:#8a5a10; --glow:#ffd08a; --accent:#d88a1a; }
+  body.theme-graphite { --lcd1:#15171c; --lcd2:#3c4250; --glow:#e6e9f0; --accent:#6b7488; }
+
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; user-select:none; font:10px Tahoma, "Segoe UI", sans-serif; background:#9a9ca1; }
+  .engraved { color:#4a4e55; text-shadow:0 1px rgba(255,255,255,.7); }  /* dark text + light line below = cut into metal */
+
+  /* the body: brushed aluminium, slightly yellowed with age, grime collected along the edges */
+  .app { position:relative; height:100%; display:flex; flex-direction:column; padding:0 7px 7px; border:1px solid #55595f;
+         background:repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 1px, rgba(0,0,0,.035) 1px 2px, transparent 2px 4px),
+                    linear-gradient(#eef0f2, #c6c8cc 55%, #a9acb1);
+         box-shadow:inset 0 0 28px rgba(70,55,25,.28), inset 0 1px rgba(255,255,255,.9); }
+  /* wear layer on top of everything: film grain + scratches + a faint yellow tint. pointer-events:none = clicks pass through */
+  /* normal blending, not multiply: blending over the canvas sliders every frame left dark smudges behind (Edge GPU glitch) */
+  .app::after { content:""; position:absolute; inset:0; pointer-events:none; z-index:5; opacity:.4;
+    background:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='220'><g fill='none' stroke-linecap='round'><path d='M12 44 L150 27 M64 160 L238 128 M205 18 L300 76 M28 196 L96 170 M150 95 L270 101 M250 180 L312 150 M90 12 L120 60' stroke='%23585858' stroke-opacity='.35' stroke-width='.6'/><path d='M14 46 L150 29 M66 162 L238 130 M207 20 L300 78' stroke='white' stroke-opacity='.6' stroke-width='.5'/></g><circle cx='40' cy='90' r='1' fill='%23444' fill-opacity='.4'/><circle cx='260' cy='40' r='.8' fill='%23444' fill-opacity='.4'/><circle cx='180' cy='200' r='1.2' fill='%23444' fill-opacity='.3'/></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .35  0 0 0 .5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+      linear-gradient(rgba(190,170,110,.10), rgba(190,170,110,.10)); }
+
+  /* depth of field: the camera focuses on the display + buttons; the top edge drifts out of focus.
+     backdrop-filter blurs whatever is behind it; the mask fades the blur in from nothing.
+     (The bottom band was removed: re-blurring the moving sliders every frame glitched.) */
+  .dof { position:absolute; left:0; right:0; pointer-events:none; z-index:6; }
+  .dof.top    { top:0; height:26px; backdrop-filter:blur(1.1px); -webkit-mask:linear-gradient(#000 30%, transparent); }
+  .vignette { position:absolute; inset:0; pointer-events:none; z-index:4;
+              background:radial-gradient(ellipse at 45% 40%, transparent 55%, rgba(30,25,15,.28)); }
+
+  /* title bar */
+  .titlebar { height:20px; flex:none; display:flex; align-items:center; gap:4px; margin:4px -2px 5px; padding:0 4px;
+              border-radius:4px; background:linear-gradient(#5b6276, #2b3042); color:#cfd5e4;
+              box-shadow:var(--drop), inset 0 1px rgba(255,255,255,.25); }
+  .drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; font:bold 9px Tahoma; letter-spacing:2px; }
+  .grip { flex:1; height:5px; background:repeating-linear-gradient(#8890a8 0 1px, transparent 1px 2px); opacity:.7; }
+  /* small round "dot" buttons, sitting in a little recess */
+  .dot { width:13px; height:13px; padding:0; border:none; border-radius:50%; cursor:pointer; font:bold 7px/1 Tahoma; color:#3a3f48;
+         background:radial-gradient(circle at 40% 30%, #fff, #b8bbc1 60%, #80848b); box-shadow:0 0 0 2px #23283a, 1px 1px 2px rgba(0,0,0,.6); }
+  .dot:active { background:radial-gradient(circle at 50% 60%, #f0f0f0, #a2a6ad); }
+  .led { width:7px; height:7px; border-radius:50%; background:#2d4a2d; box-shadow:inset 0 1px 1px rgba(0,0,0,.6); }
+  body.playing .led { background:#7dff6b; box-shadow:0 0 6px #7dff6b, inset 0 -1px 1px rgba(0,0,0,.3); }
+
+  /* the glowing display, behind scuffed glass */
+  .lcd { position:relative; flex:none; height:78px; display:flex; gap:8px; padding:6px 8px; border-radius:6px; border:2px solid #3a3e47;
+         background:linear-gradient(var(--lcd2), var(--lcd1) 70%); color:var(--glow); text-shadow:0 0 4px var(--glow);
+         box-shadow:inset 0 3px 6px rgba(0,0,0,.65), 0 1px rgba(255,255,255,.85); }
+  .lcd::after { content:""; position:absolute; inset:0; border-radius:4px; pointer-events:none;  /* glass glare + a fingerprint smudge */
+                background:linear-gradient(160deg, rgba(255,255,255,.14), transparent 40%),
+                           radial-gradient(ellipse 60px 30px at 72% 70%, rgba(255,255,255,.07), transparent); }
+  /* the cover twice: faded across the whole display (via the --cover variable), and sharp on the left */
+  .backdrop { position:absolute; inset:0; border-radius:4px; pointer-events:none; opacity:.3;
+              background:var(--cover, none) center 35% / cover; filter:saturate(.8) blur(.4px);
+              -webkit-mask:linear-gradient(90deg, transparent 15%, #000 65%); }
+  .cover { position:relative; width:64px; height:64px; flex:none; display:grid; place-items:center; overflow:hidden;
+           border:1px solid rgba(255,255,255,.3); background:rgba(0,0,0,.3); box-shadow:2px 2px 4px rgba(0,0,0,.5); }
+  .cover img { width:100%; height:100%; object-fit:cover; filter:saturate(.9) contrast(.95); }
+  .cd::before { content:"♫"; font-size:28px; opacity:.5; }
+  .mid { position:relative; flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between; }
+  .row1 { display:flex; align-items:center; gap:8px; }
+  /* pixel-font time, small and cute: round 2px dots instead of squares, a bouncy pop, and a blinking colon */
+  #time { display:flex; align-items:center; gap:3px; }
+  .pg { display:grid; gap:1px; }
+  .pg i { width:2px; height:2px; border-radius:50%; background:currentColor; opacity:.12; transform:scale(.5);  /* ghost dot */
+          transition:opacity .25s, transform .45s cubic-bezier(.3, 1.9, .5, 1); transition-delay:calc(var(--r) * 30ms); }
+  .pg i.on { opacity:1; transform:scale(1.15); box-shadow:0 0 3px var(--glow); }
+  .pg:not(:has(i:nth-child(8))) { animation:blink 1s steps(1) infinite; }  /* the colon is the only grid with < 8 dots */
+  @keyframes blink { 50% { opacity:.5; } }  /* dims, never vanishes: "2:04" must not read as "204" */
+
+  /* the rest of the screen speaks the same dot-matrix language: a dot-grid mask turns text and bars into dots */
+  .dots { -webkit-mask:radial-gradient(circle, #000 .9px, transparent 1.3px) 0 0 / 2.5px 2.5px; }
+  .badge { font:bold 8px Tahoma; border:1px solid currentColor; border-radius:6px; padding:0 4px; }
+  .badge:empty { display:none; }
+  /* spectrum + slider movement are drawn on canvases (see drawViz below); these just give them their size */
+  #spec { margin-left:auto; width:94px; height:32px; }
+  .probe { display:none; }  /* invisible elements we read the theme's real colours from */
+  .marquee { overflow:hidden; white-space:nowrap; font:900 13px/16px Consolas, monospace; letter-spacing:1px; text-transform:uppercase; }
+  .marquee .inner { display:inline-block; padding-left:100%; animation:marquee 16s linear infinite; }
+  @keyframes marquee { to { transform:translateX(-100%); } }
+  #title:not(:empty)::before { content:" - "; }
+  #album:not(:empty)::before { content:" · "; }
+
+  /* seek: a groove cut into the metal + a ridged grip you can feel */
+  .seekrow { flex:none; display:flex; align-items:center; gap:8px; margin-top:8px; height:20px; }
+  .seek { flex:1; -webkit-appearance:none; appearance:none; background:transparent; margin:0; height:20px; }
+  .seek::-webkit-slider-runnable-track { height:8px; border-radius:4px; background:linear-gradient(#3a3d44, #6a6e76); box-shadow:var(--well); }
+  .seek::-webkit-slider-thumb { -webkit-appearance:none; width:34px; height:16px; margin-top:-4px; border-radius:4px; border:1px solid #7d8188;
+        background:repeating-linear-gradient(90deg, transparent 0 11px, #8d9097 11px 12px, #fafbfc 12px 13px) 0 3px / 100% 10px no-repeat,
+                   linear-gradient(#fdfdfd, #c3c6cc);
+        box-shadow:var(--drop); }
+  .seek:disabled { opacity:.5; }
+
+  /* oval pill in a recessed bezel */
+  .bezel { padding:3px; border-radius:12px; background:linear-gradient(#a7aab0, #e8eaed); box-shadow:var(--well); }
+  .pill { position:relative; height:16px; min-width:34px; padding:0 9px; border-radius:9px; border:1px solid #8a8e95; cursor:pointer;
+          display:flex; align-items:center; justify-content:center; gap:3px; font:bold 9px Tahoma; white-space:nowrap;
+          background:linear-gradient(#fdfdfd, #c9ccd1); box-shadow:var(--drop), inset 0 1px #fff; }
+  .pill:active { background:linear-gradient(#c9ccd1, #f0f1f3); box-shadow:inset 0 1px 2px rgba(0,0,0,.3); }
+  .pill select { position:absolute; inset:0; opacity:0; cursor:pointer; }  /* invisible real dropdown on top */
+
+  /* transport: brushed metal discs sitting in round wells */
+  .ctrls { flex:none; display:flex; align-items:center; gap:6px; margin-top:8px; height:44px; }
+  .well { padding:3px; border-radius:50%; background:linear-gradient(#9fa3a9, #eceef1); box-shadow:var(--well); }
+  .round { display:grid; place-items:center; width:28px; height:28px; padding:0; border:none; border-radius:50%; cursor:pointer;
+           background:var(--metal); font:9px sans-serif;
+           box-shadow:var(--drop), inset 0 1px rgba(255,255,255,.8), inset 0 -1px rgba(0,0,0,.25); }
+  .round:active { transform:translateY(1px); box-shadow:0 1px 1px rgba(0,0,0,.4), inset 0 1px 2px rgba(0,0,0,.3); }
+  /* play: the big "power button" kind: a white concave face inside a ring */
+  .round.big { width:36px; height:36px; font-size:12px; color:var(--accent);
+               background:radial-gradient(circle at 50% 65%, #ffffff, #d4d7dc 70%, #b3b7be);
+               box-shadow:var(--drop), 0 0 0 3px #c6c9ce, 0 0 0 4px #8d9198; }
+
+  /* lyrics toggle switch: a white knob sliding in a dark groove */
+  .switch { display:flex; align-items:center; gap:5px; margin-left:auto; cursor:pointer; font:bold 8px Tahoma; }
+  .switch .track { width:34px; height:16px; border-radius:8px; padding:2px; background:linear-gradient(#55595f, #8a8e95); box-shadow:var(--well); }
+  .switch .knob { width:12px; height:12px; border-radius:50%; background:radial-gradient(circle at 40% 30%, #fff, #c9ccd1);
+                  box-shadow:var(--drop); transition:transform .15s; }
+  .switch.on .track { background:linear-gradient(#1f3a70, var(--accent)); }
+  .switch.on .knob { transform:translateX(18px); }
+
+  /* volume: a rotary knob with dotted scale; the real <input> stays hidden and the knob drives it */
+  .knobwrap { position:relative; width:46px; height:46px; display:grid; place-items:center; margin-left:4px; }
+  .ticks { position:absolute; inset:0; border-radius:50%;
+           background:repeating-conic-gradient(from -135deg, #5d6168 0 4deg, transparent 4deg 27deg);
+           -webkit-mask:radial-gradient(circle, transparent 19px, #000 20px 22px, transparent 23px),
+                        conic-gradient(from 135deg, transparent 0 90deg, #000 90deg);
+           -webkit-mask-composite:source-in; }
+  .vknob { width:32px; height:32px; border-radius:50%; cursor:ns-resize; background:var(--metal);
+           box-shadow:2px 3px 4px rgba(0,0,0,.5), inset 0 1px rgba(255,255,255,.8), 0 0 0 1px #7b7f86;
+           transform:rotate(calc(-135deg + 270deg * var(--vol, 1))); }
+  .vknob::after { content:""; position:absolute; left:50%; top:3px; width:3px; height:11px; margin-left:-1.5px; border-radius:2px;
+                  background:#3b3f46; box-shadow:0 1px rgba(255,255,255,.6); }
+  .vknob.off { opacity:.5; cursor:default; }
+  #volume { display:none; }
+
+  /* the slider panel: grooves + white two-tone thumbs, moved by the music */
+  .eq { flex:none; height:142px; margin-top:7px; padding:9px 10px 0; display:flex; flex-direction:column;
+        border:1px solid #7c8087; border-radius:6px; background:linear-gradient(#e6e8eb, #bfc2c8);
+        box-shadow:inset 0 2px 4px rgba(0,0,0,.25), 0 1px rgba(255,255,255,.8); }
+  .sliders { position:relative; display:flex; justify-content:space-between; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:4px; width:30px; }
+  .groove { position:relative; width:8px; height:92px; border-radius:4px; background:linear-gradient(90deg, #34373d, #686c74); box-shadow:var(--well); }
+  #eqc { position:absolute; z-index:1; left:0; top:-8px; width:100%; height:110px; pointer-events:none; }  /* z-index: above the grooves */  /* fills + thumbs, drawn on top */
+  .scale { display:flex; flex-direction:column; justify-content:space-between; height:92px; font:7px Tahoma; }
+  .lab { font:8px Tahoma; }
+  .foot { margin-top:auto; padding:4px 0 6px; display:flex; align-items:center; gap:8px; font:bold 8px Tahoma; letter-spacing:1px; }
+  .foot .pill { font-size:8px; }
+
+  /* lyrics: on a second display */
+  .lyrics { display:none; flex:1; min-height:0; margin-top:7px; padding:6px; overflow-y:auto; position:relative;
+            border-radius:6px; border:2px solid #3a3e47; background:linear-gradient(var(--lcd2), var(--lcd1) 40%);
+            color:var(--glow); text-align:center; font:12px/1.6 Consolas, monospace; box-shadow:inset 0 3px 6px rgba(0,0,0,.65); }
+  body.lyrics-on .lyrics { display:block; }
+  .lyrics p { margin:0; }
+  .lyrics.synced p { opacity:.45; }
+  .lyrics p.now { opacity:1; color:#fff; text-shadow:0 0 6px var(--glow); }
+  .lyrics p.empty { opacity:.6; }
+
+  .menu { position:fixed; z-index:9; min-width:110px; padding:3px 0; border:1px solid #2c3246; border-radius:3px;
+          background:linear-gradient(#f4f6fa, #c9cdd6); box-shadow:0 3px 8px rgba(0,0,0,.4); }
+  .menu .item { padding:3px 14px 3px 8px; white-space:pre; cursor:pointer; }
+  .menu .item:hover { background:var(--accent); color:#fff; }
+
+  /* compact ("window shade"): only the player, no slider panel */
+  body.compact .eq, body.compact .lyrics { display:none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="titlebar">
+    <span class="led" title="Playing"></span>
+    <div class="drag pywebview-drag-region"><span class="grip pywebview-drag-region"></span>NOW PLAYING<span class="grip pywebview-drag-region"></span></div>
+    <button class="dot" title="Minimize" onclick="pywebview.api.minimize()">–</button>
+    <button class="dot" title="Hide slider panel" onclick="toggleCompact()">▫</button>
+    <button class="dot" title="Close" onclick="pywebview.api.close()">✕</button>
+  </div>
+
+  <div class="lcd">
+    <div class="backdrop"></div>
+    <div class="cover"><div class="cd" id="cd"></div><img id="cover" hidden alt=""></div>
+    <div class="mid">
+      <div class="row1">
+        <span id="time" data-pixel></span>
+        <canvas id="spec" class="dots"></canvas>
+        <i class="probe" id="pGlow" style="color:var(--glow)"></i><i class="probe" id="pAccent" style="color:var(--accent)"></i>
+      </div>
+      <div class="marquee dots"><span class="inner"><span id="artist"></span><span id="title"></span><span id="album"></span></span></div>
+    </div>
+  </div>
+
+  <div class="seekrow">
+    <input class="seek" id="seek" type="range" min="0" max="1" step="any" value="0" disabled>
+    <span class="bezel"><span class="pill engraved" title="Pick source">⏏<select class="pick"></select></span></span>
+  </div>
+
+  <div class="ctrls">
+    <span class="well"><button class="round engraved" title="Previous" onclick="send('skip_previous')">◀◀</button></span>
+    <span class="well"><button class="round big" title="Play / Pause" id="play" onclick="send('toggle_play_pause')">▶</button></span>
+    <span class="well"><button class="round engraved" title="Stop" onclick="send('stop')">■</button></span>
+    <span class="well"><button class="round engraved" title="Next" onclick="send('skip_next')">▶▶</button></span>
+    <label class="switch engraved" id="lyrBtn" title="Lyrics" onclick="toggleLyrics()">LYRICS<span class="track"><span class="knob" style="display:block"></span></span></label>
+    <div class="knobwrap" title="App volume: drag up/down or scroll">
+      <div class="ticks"></div><div class="vknob off" id="vknob"></div>
+    </div>
+    <input id="volume" type="range" min="0" max="1" step="0.01" value="1" disabled>
+  </div>
+
+  <div class="eq">
+    <div class="sliders engraved">
+      <canvas id="eqc"></canvas>
+      <div class="col"><div class="groove"></div><span class="lab">LEVEL</span></div>
+      <div class="scale"><span>loud</span><span>·</span><span>quiet</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">60</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">150</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">300</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">600</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">1.2K</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">2.4K</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">4.8K</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">8K</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">12K</span></div>
+      <div class="col"><div class="groove"></div><span class="lab">16K</span></div>
+    </div>
+    <div class="foot engraved">
+      VISUALIZER
+      <span class="bezel" style="margin-left:auto"><span class="pill" title="Next colour theme" onclick="nextTheme()">THEME: <b id="themeName">BLUE</b></span></span>
+    </div>
+  </div>
+
+  <div class="lyrics" id="lyrics"></div>
+  <div class="vignette"></div>
+  <div class="dof top"></div>
+</div>
+
+<script>const STYLE = { full:[460, 340], compact:[460, 190], lyrics:190, empty:"NO MEDIA" };</script>
+<script src="widget.js"></script>
+<script>
+  // ---- colour themes ----
+  const THEMES = ["album", "blue", "green", "amber", "graphite"];
+  function setTheme(t) {
+    THEMES.forEach(x => document.body.classList.toggle("theme-" + x, x === t));
+    $("themeName").textContent = t.toUpperCase();
+  }
+
+  // ---- visualizer, drawn on two canvases every frame (widget.js calls drawViz) ----
+  function fitCanvas(c) {  // sharp on high-DPI screens: more real pixels than CSS pixels
+    c.width = c.clientWidth * devicePixelRatio;
+    c.height = c.clientHeight * devicePixelRatio;
+    const g = c.getContext("2d");
+    g.scale(devicePixelRatio, devicePixelRatio);
+    return g;
+  }
+  let spec, eqc, grooves, colors = {}, frameNo = 0;
+  // After a style switch the window still has the OLD style's size for a moment, and the first frame measured
+  // the grooves then. When the window shrank, the grooves moved but the thumbs kept the old spots (the "smudges").
+  // So: whenever the window changes size, forget the measurements; the next frame measures again.
+  addEventListener("resize", () => { spec = null; });
+  function setupViz() {
+    spec = fitCanvas($("spec"));
+    eqc = fitCanvas($("eqc"));
+    const box = $("eqc").getBoundingClientRect();
+    grooves = [...document.querySelectorAll(".groove")].map(g => {  // where each groove is, inside the canvas
+      const r = g.getBoundingClientRect();
+      return { x: r.left - box.left + r.width / 2, top: r.top - box.top, h: r.height };
+    });
+  }
+  function readColors() {  // the theme's real colours (the album theme changes them with every song)
+    colors.glow = getComputedStyle($("pGlow")).color;
+    colors.accent = getComputedStyle($("pAccent")).color;
+  }
+  function roundRect(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+
+  function drawViz(v, p) {
+    if (!spec) setupViz();
+    if (frameNo++ % 30 === 0) readColors();
+    const W = 94, H = 32;
+    // top-right spectrum: soft bars + a floating peak cap
+    spec.clearRect(0, 0, W, H);
+    spec.shadowColor = colors.glow; spec.shadowBlur = 4;
+    for (let i = 0; i < 10; i++) {
+      const x = i * 9 + 2, h = Math.max(1, v[i] * (H - 4));
+      const grad = spec.createLinearGradient(0, H, 0, H - h);
+      grad.addColorStop(0, "transparent"); grad.addColorStop(0.4, colors.glow); grad.addColorStop(1, "#fff");
+      spec.fillStyle = grad;
+      roundRect(spec, x, H - h, 6, h, [3, 3, 1, 1]); spec.fill();
+      if (p[i] > 0.02) { spec.fillStyle = "#fff"; spec.fillRect(x, H - 2 - p[i] * (H - 4), 6, 2); }
+    }
+    // slider panel: a glowing fill in each groove + the white two-tone thumb riding on top
+    eqc.clearRect(0, 0, 460, 110);
+    grooves.forEach((gr, k) => {
+      const val = k === 0 ? v[10] : v[k - 1];  // first column is LEVEL (the average)
+      const bottom = gr.top + gr.h, fillH = (gr.h - 2) * val;
+      eqc.globalAlpha = 0.8; eqc.shadowBlur = 0;
+      const grad = eqc.createLinearGradient(0, bottom, 0, bottom - gr.h);
+      grad.addColorStop(0, colors.accent); grad.addColorStop(1, colors.glow);
+      eqc.fillStyle = grad;
+      roundRect(eqc, gr.x - 3, bottom - 1 - fillH, 6, fillH, 3); eqc.fill();
+      eqc.globalAlpha = 1;
+      // thumb top: at 0 it rests ON the groove's end (it used to hang 2px past it onto the light metal,
+      // where its shadow showed up as a dark smudge under 12K/16K, the treble sliders that sit low most often)
+      const ty = bottom - 13 - (gr.h - 13) * val;
+      eqc.shadowColor = "rgba(0,0,0,.28)"; eqc.shadowBlur = 2; eqc.shadowOffsetX = 0; eqc.shadowOffsetY = 1;  // lighter, tighter
+      const body = eqc.createLinearGradient(0, ty, 0, ty + 13);
+      body.addColorStop(0, "#fdfdfd"); body.addColorStop(1, "#c4c7cd");
+      eqc.fillStyle = body; roundRect(eqc, gr.x - 11, ty, 22, 13, 6); eqc.fill();
+      eqc.shadowBlur = 0; eqc.shadowOffsetX = eqc.shadowOffsetY = 0;
+      eqc.strokeStyle = "#868a91"; eqc.lineWidth = 1; eqc.stroke();
+      eqc.fillStyle = "rgba(0,0,0,.28)"; eqc.fillRect(gr.x - 1, ty + 2, 1, 9);   // centre groove: dark line...
+      eqc.fillStyle = "rgba(255,255,255,.95)"; eqc.fillRect(gr.x, ty + 2, 1, 9);  // ...with a light edge
+    });
+  }
+  function nextTheme() {
+    const t = THEMES[(THEMES.indexOf($("themeName").textContent.toLowerCase()) + 1) % THEMES.length];
+    setTheme(t);
+    pywebview.api.pref("theme", t);
+  }
+  window.addEventListener("pywebviewready", async () => setTheme(await pywebview.api.pref("theme") || "album"));
+
+</script>
+</body>
+</html>

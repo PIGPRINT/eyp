@@ -1,0 +1,12 @@
+# your own files: never published
+settings.json
+widget.log
+
+# build output: the zip goes on the GitHub Releases page instead of in the code
+release/
+build/
+dist/
+*.spec
+
+# Python cache
+__pycache__/

@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Now Playing mini</title>
+<style>
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; user-select:none; background:#15171c; cursor:pointer;
+               font:bold 8px "Segoe UI", sans-serif; color:#fff; }
+  /* background: the cover again, blurred and darkened, so the tile takes on the album's colours */
+  .bg { position:absolute; inset:-8px; background:var(--cover, none) center / cover; filter:blur(6px) brightness(.55) saturate(1.3); }
+
+  /* the record: cover in a circle, with a ring around it that fills up as the song plays */
+  .ring { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%;
+          background:conic-gradient(#fff calc(var(--p, 0) * 1turn), rgba(255,255,255,.18) 0); padding:2px;
+          box-shadow:0 2px 6px rgba(0,0,0,.6); }
+  .disc { width:100%; height:100%; border-radius:50%; background:#2a2d35 var(--cover, none) center / cover;
+          animation:spin 8s linear infinite paused; }
+  .disc::after { content:""; position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%;
+                 background:#15171c; box-shadow:0 0 0 1.5px rgba(255,255,255,.5); }  /* the hole in the middle */
+  body.playing .disc { animation-play-state:running; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* on hover: dim the tile, show a tiny scrolling title on top and play/pause in the corner.
+     The button stays small and out of the middle: a click anywhere else means "bring the widget back" */
+  .hover { position:absolute; inset:0; background:rgba(0,0,0,.45); opacity:0; transition:opacity .2s; pointer-events:none; }
+  body:hover .hover { opacity:1; }
+  #pp { position:absolute; right:3px; bottom:3px; width:20px; height:20px; border:none; border-radius:50%; padding:0; cursor:pointer;
+        font:9px sans-serif; color:#15171c; background:rgba(255,255,255,.95); box-shadow:0 1px 3px rgba(0,0,0,.6);
+        pointer-events:auto; transform:scale(.6); transition:transform .2s; }
+  body:hover #pp { transform:scale(1); }
+  .title { position:absolute; left:4px; right:4px; top:3px; overflow:hidden; white-space:nowrap; }
+  .title span { display:inline-block; padding-left:100%; animation:marquee 7s linear infinite; text-shadow:0 1px 2px #000; }
+  @keyframes marquee { to { transform:translateX(-100%); } }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="ring"><div class="disc"></div></div>
+<div class="hover"><button id="pp" title="Play / Pause">▶</button><div class="title"><span id="t"></span></div></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  let cover = null;
+
+  async function tick() {  // the same song data the widget uses, once a second
+    try {
+      const s = await pywebview.api.state(null);
+      if ((s.cover || null) !== cover) {
+        cover = s.cover || null;
+        document.body.style.setProperty("--cover", cover ? `url("${cover}")` : "none");
+      }
+      document.body.classList.toggle("playing", !!s.playing);
+      document.body.style.setProperty("--p", s.dur ? (s.pos / s.dur).toFixed(3) : 0);
+      $("pp").textContent = s.playing ? "❚❚" : "▶";
+      $("t").textContent = s.id ? `${s.artist} – ${s.title}` : "Nothing playing";
+    } catch (e) { console.error(e); }
+    setTimeout(tick, 1000);
+  }
+
+  // click = bring the widget back; drag = move the bubble (it snaps to the nearest edge when you let go)
+  let down = null, moved = false, sending = false, nextPos = null;
+
+  // one move message at a time, always the newest position. (Firing one per mouse movement let a late
+  // move arrive AFTER the snap, leaving the bubble half off-screen.)
+  async function sendMoves() {
+    if (sending || !nextPos) return;
+    sending = true;
+    const [x, y] = nextPos; nextPos = null;
+    await pywebview.api.bubble_move(x, y);
+    sending = false;
+    sendMoves();
+  }
+  async function snapWhenSettled() {
+    while (sending || nextPos) await new Promise(r => setTimeout(r, 16));
+    pywebview.api.bubble_snap();
+  }
+
+  addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.target.id === "pp") return;
+    down = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY };
+    moved = false;
+    document.body.setPointerCapture(e.pointerId);  // keep following the mouse even if it outruns the tiny window
+  });
+  addEventListener("pointermove", e => {
+    if (!down) return;
+    if (!moved && Math.hypot(e.screenX - down.sx, e.screenY - down.sy) > 4) moved = true;  // a wobble isn't a drag
+    if (moved) { nextPos = [e.screenX - down.x, e.screenY - down.y]; sendMoves(); }
+  });
+  addEventListener("pointerup", () => {
+    if (!down) return;
+    down = null;
+    moved ? snapWhenSettled() : pywebview.api.restore();
+  });
+  addEventListener("contextmenu", e => { e.preventDefault(); pywebview.api.restore(); });
+  $("pp").onclick = () => pywebview.api.control(null, "toggle_play_pause").then(tick);
+
+  window.addEventListener("pywebviewready", tick);
+</script>
+</body>
+</html>

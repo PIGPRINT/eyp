@@ -1,0 +1,347 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Silverdeck</title>
+<style>
+  /* screen colours per theme: --scr1 bright centre, --scr2 dark edge, --ink the LCD "segments" */
+  body.theme-album    { --scr1:color-mix(in srgb, var(--album, #f6b21a) 55%, #fff); --scr2:color-mix(in srgb, var(--album, #f6b21a) 60%, #000);
+                        --ink:color-mix(in srgb, var(--album, #f6b21a) 18%, #0d0700); }
+  body.theme-amber    { --scr1:#ffc94a; --scr2:#a85a00; --ink:#3d1d00; }
+  body.theme-blue     { --scr1:#8cc8ff; --scr2:#1d4f9c; --ink:#081a36; }
+  body.theme-green    { --scr1:#b6f08e; --scr2:#2f7a2a; --ink:#0d2a0a; }
+  body.theme-graphite { --scr1:#d9dce3; --scr2:#5b6170; --ink:#16181d; }
+
+  /* light comes from the top-left: raised things cast shadows down-right, holes are dark along their top edge */
+  :root { --raise:0 3px 4px rgba(0,0,0,.45), 0 1px 1px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.95), inset 0 -2px 3px rgba(0,0,0,.18);
+          --hole:inset 0 3px 6px rgba(0,0,0,.45), inset 0 -1px 1px rgba(255,255,255,.6), 0 1px rgba(255,255,255,.9);
+          --silver:linear-gradient(#eceef1, #c4c7cc 45%, #9a9ea5);
+          --wellbg:linear-gradient(#6f737a, #c2c5ca);
+          --metal:radial-gradient(circle at 40% 28%, rgba(255,255,255,.75), transparent 50%),
+                  conic-gradient(#c9ccd1, #868a92, #dcdfe3, #7a7e86, #cdd0d4, #8b8f97, #d8dbdf, #80848c, #c9ccd1); }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; user-select:none; background:#2a2c31; font:bold 9px Tahoma, "Segoe UI", sans-serif; }
+  .eng { color:#2f333a; text-shadow:0 1px rgba(255,255,255,.45); letter-spacing:1px; }  /* engraved into the metal */
+
+  /* the darker silver body, with a fat bevel all round */
+  .shell { position:absolute; inset:0; border-radius:16px; border:1px solid #3f4248;
+           background:repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 1px, rgba(0,0,0,.03) 1px 3px),
+                      linear-gradient(#c6c9ce, #a5a9af 40%, #84888f);
+           box-shadow:inset 0 2px #fff, inset 0 -4px 8px rgba(0,0,0,.28), inset 3px 0 6px rgba(255,255,255,.5), inset -3px 0 6px rgba(0,0,0,.12); }
+  .drag { position:absolute; left:120px; right:120px; top:0; height:24px; z-index:3; }
+  .logo { position:absolute; left:50%; top:4px; transform:translateX(-50%); z-index:2; pointer-events:none;
+          font:italic 900 15px "Segoe UI", sans-serif; letter-spacing:2px; color:#3e424a;
+          text-shadow:0 1px rgba(255,255,255,.5), 0 -1px rgba(0,0,0,.25); }
+
+  /* round silver buttons in round wells */
+  .well { position:absolute; border-radius:50%; padding:4px; background:var(--wellbg); box-shadow:var(--hole); }
+  .btn { width:100%; height:100%; padding:0; border:none; border-radius:50%; cursor:pointer; display:grid; place-items:center;
+         background:var(--silver); box-shadow:var(--raise); color:#4b5058; font:bold 10px Tahoma; text-shadow:0 1px #fff; }
+  .btn:active { transform:translateY(1px); background:linear-gradient(#d7d9dd, #f2f3f5); box-shadow:inset 0 2px 3px rgba(0,0,0,.35); }
+  .lbl { position:absolute; font:bold 8px Tahoma; }
+  .led { position:absolute; width:9px; height:9px; border-radius:50%; background:radial-gradient(circle at 40% 35%, #8a8f97, #4d5158);
+         box-shadow:inset 0 1px 2px rgba(0,0,0,.6), 0 1px rgba(255,255,255,.8); }
+  .led.lit { background:radial-gradient(circle at 40% 35%, #fff6c9, #ffb31a 60%, #c46a00); box-shadow:0 0 6px #ffb31a, 0 1px rgba(255,255,255,.8); }
+
+  /* the screen: sunk in a bezel, curved top, dot-matrix texture, glare from above */
+  /* perspective: seen from right above, so the top edge is nearest (widest) and the bottom edge leans away.
+     Curved border: big elliptical corners on all four sides give the soft "bulging glass" outline of an old screen */
+  .bezel { position:absolute; left:74px; top:22px; width:412px; height:150px; padding:5px;
+           border-radius:72px 72px 48px 48px / 34px 34px 24px 24px; background:var(--wellbg); box-shadow:var(--hole);
+           transform:perspective(520px) rotateX(-10deg); transform-origin:50% 0%; }
+  .screen { position:relative; width:100%; height:100%; overflow:hidden; color:var(--ink);
+            border-radius:68px 68px 44px 44px / 30px 30px 21px 21px;
+            background:radial-gradient(rgba(0,0,0,.09) .7px, transparent 1.1px) 0 0 / 3px 3px,
+                       radial-gradient(ellipse at 50% 45%, var(--scr1), var(--scr2) 120%);
+            /* dark rim all round (inner edge of curved glass) + shadow from the bezel lip on top */
+            box-shadow:inset 0 0 16px rgba(0,0,0,.35), inset 0 5px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.4); }
+  .screen::after { content:""; position:absolute; inset:0; pointer-events:none;
+                   background:linear-gradient(170deg, rgba(255,255,255,.35), rgba(255,255,255,.06) 35%, transparent 50%); }
+  .lcd { text-shadow:0 1px rgba(255,255,255,.25); }
+  .ind { position:absolute; left:26px; font:bold italic 9px Tahoma; letter-spacing:1px; opacity:.18; }
+  .ind.on { opacity:.9; }
+  .vizbox { position:absolute; left:100px; top:10px; width:196px; height:94px; }
+  .vizbox::before, .vizbox::after { content:""; position:absolute; top:0; bottom:0; width:8px; border:2px solid currentColor; opacity:.45; }
+  .vizbox::before { left:0; border-right:none; }   /* [ bracket */
+  .vizbox::after { right:0; border-left:none; }    /* ] bracket */
+  #viz { position:absolute; left:10px; top:4px; width:176px; height:calc(100% - 8px); }
+  .vizlabel { display:none; }
+  body:not(.viz-on) #viz { visibility:hidden; }
+  /* with lyrics on, the visualizer stays big and gives up two lines at the bottom */
+  body.lyrics-on .vizbox { height:58px; }
+
+  /* lyrics: one lyric at a time, under the visualizer, with room for TWO rows so long lines wrap instead of
+     being cut. Synced: only the current line shows, centred in the box. Plain lyrics: the first two rows. */
+  .lyrics { position:absolute; left:96px; top:72px; width:206px; height:34px; display:none; overflow:hidden;
+            text-align:center; font:bold 11px/17px Consolas, monospace; }
+  body.lyrics-on .lyrics { display:block; }
+  body.lyrics-on .lyrics.synced { display:flex; flex-direction:column; justify-content:center; }
+  .lyrics p { margin:0; padding:0 6px; border-radius:2px;
+              display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }  /* max 2 rows, then "…" */
+  .lyrics.synced p:not(.now) { display:none; }
+  .lyrics p.now { background:var(--ink); color:var(--scr1); text-shadow:none; animation:lyricIn .35s ease-out; }  /* lit LCD row */
+  @keyframes lyricIn { from { opacity:0; transform:translateY(5px); } }  /* each new line slides up into place */
+  .lyrics p.empty { opacity:.5; }
+
+  .right { position:absolute; right:22px; top:24px; width:92px; text-align:right; }
+  .volrow { font:bold italic 9px Tahoma; letter-spacing:1px; }
+  .volbars { display:inline-flex; gap:2px; vertical-align:-1px; }
+  .volbars i { width:3px; height:8px; background:currentColor; opacity:.15; }
+  .volbars i.on { opacity:.9; }
+  /* pixel-font time: every character is a 5x7 grid of square pixels (built by widget.js) */
+  #time { display:flex; justify-content:flex-end; gap:4px; margin-top:12px; }
+  .pg { display:grid; gap:1px; }
+  .pg i { width:3px; height:3px; background:currentColor; opacity:.09; transform:scale(.6);  /* unlit "ghost" pixel */
+          transition:opacity .25s, transform .35s cubic-bezier(.3, 1.6, .5, 1);
+          transition-delay:calc(var(--r) * 28ms); }  /* row by row, top to bottom: pixels rain in */
+  .pg i.on { opacity:1; transform:scale(1); box-shadow:0 0 2px color-mix(in srgb, currentColor 40%, transparent); }
+  #album { margin-top:8px; font:bold 8px Tahoma; letter-spacing:1px; text-transform:uppercase; opacity:.7;
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .marquee { position:absolute; left:40px; right:40px; bottom:9px; overflow:hidden; white-space:nowrap;
+             font:bold 17px Consolas, monospace; letter-spacing:2px; text-transform:uppercase; }
+  .marquee .inner { display:inline-block; padding-left:100%; animation:marquee 18s linear infinite; }
+  @keyframes marquee { to { transform:translateX(-100%); } }
+  #title:not(:empty)::before { content:" - "; }
+  .probe { display:none; }
+
+  /* POSITION: a dark strip under the screen with a silver slider */
+  .pos { position:absolute; left:116px; top:178px; width:328px; height:18px; border-radius:9px;
+         background:linear-gradient(#3b3e44, #5c6067); box-shadow:var(--hole); }
+  .pos span { position:absolute; left:0; right:0; top:4px; text-align:center; font:bold 8px Tahoma; letter-spacing:5px; color:#c9ccd2; pointer-events:none; }
+  .seek { position:absolute; inset:0; width:100%; margin:0; -webkit-appearance:none; appearance:none; background:transparent; }
+  .seek::-webkit-slider-runnable-track { height:18px; }
+  .seek::-webkit-slider-thumb { -webkit-appearance:none; width:30px; height:14px; margin-top:2px; border-radius:7px;
+        background:repeating-linear-gradient(90deg, transparent 0 13px, #8d9097 13px 14px, #fff 14px 15px) 0 3px / 100% 8px no-repeat, var(--silver);
+        box-shadow:0 2px 3px rgba(0,0,0,.5), inset 0 1px #fff; }
+  .seek:disabled { opacity:.5; }
+
+  /* big round pad on the left: the album cover fills the circle like a tiny low-res screen */
+  .pad { position:absolute; left:96px; top:202px; width:102px; height:102px; border-radius:50%; padding:6px;
+         background:var(--wellbg); box-shadow:var(--hole); }
+  .disc { position:relative; width:100%; height:100%; border-radius:50%; overflow:hidden; display:grid; place-items:center;
+          background:#111; box-shadow:var(--raise); }
+  .disc img { display:none !important; }  /* the real cover only feeds the pixel canvas below */
+  /* the cover squeezed to 30x30 pixels, then blown back up WITHOUT smoothing = chunky 3px pixels */
+  #pix { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+  #cover[hidden] ~ #pix { display:none; }
+  /* screen texture on top, matching the big screen: dark gaps between pixels (a 3px grid, same as the LCD),
+     a faint wash of the theme colour, glare from above, and edges falling into shadow like curved glass */
+  .disc::after { content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+                 background:radial-gradient(circle, transparent 1px, rgba(0,0,0,.38) 1.5px) 0 0 / 3px 3px,
+                            linear-gradient(160deg, rgba(255,255,255,.35), transparent 42%),
+                            radial-gradient(circle, transparent 55%, rgba(0,0,0,.5)),
+                            linear-gradient(color-mix(in srgb, var(--scr1) 16%, transparent), color-mix(in srgb, var(--scr1) 16%, transparent));
+                 box-shadow:inset 0 3px 7px rgba(0,0,0,.55); }
+  .cd::before { content:"♫"; font-size:30px; color:var(--scr1); }
+  .srcbtns { position:absolute; left:121px; top:266px; display:flex; gap:8px; z-index:2; }  /* sits on top of the cover screen */
+  .mini { width:22px; height:16px; padding:0; border:none; border-radius:8px; cursor:pointer; font:8px sans-serif; color:#4b5058;
+          background:var(--silver); box-shadow:var(--raise); }
+  .mini:active { box-shadow:inset 0 1px 2px rgba(0,0,0,.35); }
+
+  /* knobs: brushed metal discs; TREBLE/BASS turn by themselves with the music, VOLUME is yours to drag */
+  .knob { position:absolute; border-radius:50%; background:var(--metal); box-shadow:var(--raise), 0 0 0 1px #8e9299; }
+  .knob::after { content:""; position:absolute; left:50%; top:4px; width:3px; height:28%; margin-left:-1.5px; border-radius:2px;
+                 background:#4b4f56; box-shadow:0 1px rgba(255,255,255,.7); }
+  .kwell { position:absolute; border-radius:50%; background:var(--wellbg); box-shadow:var(--hole); }
+  #vknob { transform:rotate(calc(-135deg + 270deg * var(--vol, 1))); cursor:ns-resize; }
+  #vknob.off { opacity:.6; cursor:default; }
+  .ticks { position:absolute; border-radius:50%;
+           background:repeating-conic-gradient(from -135deg, #6b7079 0 3deg, transparent 3deg 27deg);
+           -webkit-mask:radial-gradient(circle, transparent 46px, #000 47px 50px, transparent 51px),
+                        conic-gradient(from 135deg, transparent 0 90deg, #000 90deg);
+           -webkit-mask-composite:source-in; }
+
+  /* the transport cross: four dark quarter-buttons around a silver centre */
+  .crosswell { position:absolute; left:388px; top:198px; width:110px; height:110px; border-radius:50%; padding:5px;
+               background:var(--wellbg); box-shadow:var(--hole); }
+  .cross { position:relative; width:100%; height:100%; display:grid; grid-template-columns:1fr 1fr; gap:3px; }
+  .q { border:none; padding:0; cursor:pointer; color:#eef0f3; font:10px sans-serif; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; gap:1px;
+       background:radial-gradient(circle at 50% 0%, rgba(255,255,255,.25), transparent 70%), linear-gradient(#5b5f67, #2c2f35);
+       box-shadow:0 2px 3px rgba(0,0,0,.5), inset 0 1px rgba(255,255,255,.35), inset 0 -2px 3px rgba(0,0,0,.4); }
+  .q small { font:bold 7px Tahoma; letter-spacing:1px; color:#c9ccd2; }
+  .q:active { background:linear-gradient(#2c2f35, #4a4e55); box-shadow:inset 0 2px 4px rgba(0,0,0,.6); }
+  .q1 { border-radius:100% 0 0 0; } .q2 { border-radius:0 100% 0 0; } .q3 { border-radius:0 0 0 100%; } .q4 { border-radius:0 0 100% 0; }
+  .q1, .q2 { padding-top:14px; } .q3, .q4 { padding-bottom:14px; }
+  .center { position:absolute; left:50%; top:50%; width:38px; height:38px; margin:-19px 0 0 -19px; border-radius:50%; padding:3px;
+            background:linear-gradient(#2c2f35, #6b6f77); box-shadow:0 0 0 2px rgba(0,0,0,.3); }
+
+  /* side tabs on the right */
+  .tab { position:absolute; left:504px; top:88px; width:34px; height:86px; border-radius:12px; border:none; padding:0; cursor:pointer;
+         background:var(--silver); box-shadow:var(--raise), 0 0 0 4px #9da1a7, 0 0 0 5px #5f636a; }
+  .tab:active { box-shadow:inset 0 2px 3px rgba(0,0,0,.35), 0 0 0 4px #9da1a7, 0 0 0 5px #5f636a; }
+  .tab span { display:block; writing-mode:vertical-rl; transform:rotate(180deg); margin:auto; font:bold 8px Tahoma; letter-spacing:2px; }
+
+  .menu { position:fixed; z-index:9; min-width:110px; padding:3px 0; border:1px solid #5f636a; border-radius:6px;
+          background:var(--silver); box-shadow:0 4px 10px rgba(0,0,0,.45); font:11px "Segoe UI"; }
+  .menu .item { padding:3px 14px 3px 8px; white-space:pre; cursor:pointer; }
+  .menu .item:hover { background:var(--scr2); color:#fff; }
+
+  /* MINI: only the top half (screen + side buttons) */
+  body.compact .pos, body.compact .pad, body.compact .srcbtns, body.compact .kb, body.compact .crosswell { display:none; }
+</style>
+</head>
+<body class="theme-amber viz-on">
+<div class="shell">
+  <div class="drag pywebview-drag-region"></div>
+  <div class="logo">SILVERDECK</div>
+
+  <!-- top-right window buttons -->
+  <!-- MINI sits up here with the window buttons, so it's still there after the bottom half folds away -->
+  <!-- all three sit in the free strip right of the screen (x > 486), so none of them covers its curved corner -->
+  <div class="well" style="left:490px;top:10px;width:24px;height:24px;padding:3px"><button class="btn" title="Minimize" onclick="pywebview.api.minimize()">–</button></div>
+  <div class="well" style="left:518px;top:6px;width:36px;height:36px"><button class="btn" title="Close" onclick="pywebview.api.close()" style="font-size:14px">✕</button></div>
+  <div class="well" style="left:524px;top:48px;width:24px;height:24px;padding:3px"><button class="btn" title="Mini mode on/off" id="miniBtn" onclick="toggleCompact(); this.textContent = has('compact') ? '⌄' : '⌃'">⌃</button></div>
+
+  <!-- left column: LYRICS / VIS / ON TOP, each with a light -->
+  <div class="well" style="left:16px;top:46px;width:38px;height:38px"><button class="btn" title="Lyrics" id="lyrBtn" onclick="toggleLyrics()">LY</button></div>
+  <i class="led" id="ledLy" style="left:58px;top:61px"></i>
+  <div class="well" style="left:16px;top:90px;width:38px;height:38px"><button class="btn" title="Visualizer on/off" onclick="toggleVis()">VIS</button></div>
+  <i class="led" id="ledVis" style="left:58px;top:105px"></i>
+  <div class="well" style="left:16px;top:134px;width:38px;height:38px"><button class="btn" title="Always on top" onclick="toggleTop()">TOP</button></div>
+  <i class="led" id="ledTop" style="left:58px;top:149px"></i>
+  <div class="well" style="left:20px;top:198px;width:30px;height:30px"><button class="btn" title="Styles" onclick="openStyles(event)">≡</button></div>
+  <span class="lbl eng" style="left:24px;top:232px">CFG</span>
+  <div class="well" style="left:14px;top:250px;width:42px;height:42px"><span class="btn" title="Open: pick source" style="position:relative">⏏<select class="pick" style="position:absolute;inset:0;opacity:0;cursor:pointer"></select></span></div>
+  <span class="lbl eng" style="left:62px;top:280px">OPEN</span>
+
+  <!-- the screen -->
+  <div class="bezel"><div class="screen lcd">
+    <span class="ind" id="indLy" style="top:30px">LYRICS</span>
+    <span class="ind" id="indVis" style="top:52px">VISUALS</span>
+    <span class="ind" id="indTop" style="top:74px">ON TOP</span>
+    <div class="vizbox"><canvas id="viz"></canvas><div class="vizlabel">SPECTRUM ANALYSER</div></div>
+    <div class="lyrics" id="lyrics"></div>
+    <div class="right">
+      <div class="volrow">VOLUME: <span class="volbars" id="volbars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+      <span id="time" data-pixel></span>
+      <div id="album"></div>
+    </div>
+    <div class="marquee"><span class="inner"><span id="artist"></span><span id="title"></span></span></div>
+    <i class="probe" id="pInk" style="color:var(--ink)"></i>
+  </div></div>
+
+  <!-- right column: themes tab + mini -->
+  <button class="tab" title="Next colour theme" onclick="nextTheme()"><span class="eng">THEME · <b id="themeName">ALBUM</b></span></button>
+
+  <div class="pos"><span>POSITION</span><input class="seek" id="seek" type="range" min="0" max="1" step="any" value="0" disabled></div>
+
+  <!-- bottom: cover disc, source arrows, treble/bass meters, volume knob, transport cross -->
+  <div class="pad"><div class="disc"><div class="cd" id="cd"></div><img id="cover" hidden alt=""><canvas id="pix" width="30" height="30"></canvas></div></div>
+  <div class="srcbtns"><button class="mini" title="Previous source" onclick="cycleSource(-1)">◀</button><button class="mini" title="Next source" onclick="cycleSource(1)">▶</button></div>
+
+  <div class="kb kwell" style="left:216px;top:208px;width:40px;height:40px"></div><div class="kb knob" id="treble" style="left:220px;top:212px;width:32px;height:32px"></div>
+  <span class="kb lbl eng" style="left:262px;top:224px">TREBLE</span>
+  <div class="kb kwell" style="left:216px;top:258px;width:40px;height:40px"></div><div class="kb knob" id="bass" style="left:220px;top:262px;width:32px;height:32px"></div>
+  <span class="kb lbl eng" style="left:262px;top:274px">BASS</span>
+
+  <div class="kb ticks" style="left:301px;top:205px;width:102px;height:102px"></div>
+  <div class="kb kwell" style="left:316px;top:220px;width:72px;height:72px"></div>
+  <div class="kb knob" id="vknob" title="App volume: drag up/down or scroll" style="left:322px;top:226px;width:60px;height:60px"></div>
+  <input id="volume" type="range" min="0" max="1" step="0.01" value="1" disabled hidden>
+
+  <div class="crosswell"><div class="cross">
+    <button class="q q1" title="Stop" onclick="send('stop')">■<small>STOP</small></button>
+    <button class="q q2" title="Play / Pause" onclick="send('toggle_play_pause')">▶<small>PLAY</small></button>
+    <button class="q q3" title="Previous" onclick="send('skip_previous')">◀◀</button>
+    <button class="q q4" title="Next" onclick="send('skip_next')">▶▶</button>
+    <div class="center"><button class="btn" title="Play / Pause" id="play" onclick="send('toggle_play_pause')">▶</button></div>
+  </div></div>
+</div>
+
+<script>const STYLE = { full:[560, 316], compact:[560, 184], lyrics:0, empty:"NO MEDIA" };</script>
+<script src="widget.js"></script>
+<script>
+  const body = document.body;
+  // ---- lights: each button's LED and the matching word on the screen follow the same state ----
+  function lights() {
+    $("ledLy").classList.toggle("lit", has("lyrics-on")); $("indLy").classList.toggle("on", has("lyrics-on"));
+    $("ledVis").classList.toggle("lit", has("viz-on"));   $("indVis").classList.toggle("on", has("viz-on"));
+    $("ledTop").classList.toggle("lit", has("ontop"));    $("indTop").classList.toggle("on", has("ontop"));
+  }
+  $("lyrBtn").addEventListener("click", lights);  // widget.js's toggleLyrics runs first (inline onclick)
+
+  function toggleVis() {
+    const on = body.classList.toggle("viz-on");
+    setViz(on);
+    pywebview.api.pref("viz", on ? "on" : "off");
+    lights();
+  }
+  async function toggleTop() {
+    body.classList.toggle("ontop", await pywebview.api.on_top(!has("ontop")));
+    lights();
+  }
+  function openStyles(e) {  // CFG = the same style menu as right-click
+    document.dispatchEvent(new MouseEvent("contextmenu", { clientX: e.clientX, clientY: e.clientY }));
+  }
+  function cycleSource(step) {
+    const sel = document.querySelector(".pick"), n = sel.options.length;
+    if (!n) return;
+    sel.selectedIndex = (sel.selectedIndex + step + n) % n;
+    sel.dispatchEvent(new Event("change"));
+  }
+
+  // ---- colour themes ----
+  const THEMES = ["amber", "album", "blue", "green", "graphite"];
+  function setTheme(t) {
+    t = THEMES.includes(t) ? t : "amber";  // Silverdeck's default
+    THEMES.forEach(x => body.classList.toggle("theme-" + x, x === t));
+    $("themeName").textContent = t.toUpperCase();
+  }
+  function nextTheme() {
+    const t = THEMES[(THEMES.indexOf($("themeName").textContent.toLowerCase()) + 1) % THEMES.length];
+    setTheme(t);
+    pywebview.api.pref("theme-silverdeck", t);  // its own setting, so other styles keep theirs
+  }
+
+  // ---- cover screen: every new cover is squeezed into 30x30 pixels (CSS then blows it up without smoothing) ----
+  $("cover").addEventListener("load", () => {
+    const img = $("cover"), side = Math.min(img.naturalWidth, img.naturalHeight);
+    // centre square of the cover -> 30x30; smoothing ON here so each pixel is the average colour of its patch
+    $("pix").getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 30, 30);
+  });
+
+  // ---- volume bars on the screen follow the real volume ----
+  $("volume").addEventListener("sync", () => {
+    const n = Math.round(+$("volume").value * 10);
+    [...$("volbars").children].forEach((b, i) => b.classList.toggle("on", !$("volume").disabled && i < n));
+  });
+
+  // ---- visualizer: LCD-segment bars on a canvas + the TREBLE/BASS knobs turn with the music ----
+  let g, ink = "#000", frameNo = 0, lastKnob = [-1, -1];
+  function drawViz(v, p) {
+    const c = $("viz"), H = c.clientHeight, W = 176;
+    if (!g || c.height !== Math.round(H * devicePixelRatio)) {  // first frame, or lyrics just resized the strip
+      c.width = W * devicePixelRatio; c.height = Math.round(H * devicePixelRatio);
+      g = c.getContext("2d"); g.scale(devicePixelRatio, devicePixelRatio);
+    }
+    if (frameNo++ % 30 === 0) ink = getComputedStyle($("pInk")).color;
+    const SEG = 4, GAP = 2, rows = Math.floor(H / (SEG + GAP));
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = ink;
+    for (let i = 0; i < 10; i++) {
+      const x = 2 + i * 17.5, lit = Math.round(v[i] * rows), peakRow = Math.round(p[i] * rows);
+      for (let r = 0; r < rows; r++) {
+        const y = H - (r + 1) * (SEG + GAP);
+        g.globalAlpha = r < lit ? 0.85 : r === peakRow - 1 ? 0.6 : 0.07;  // lit / peak / unlit "ghost" segment
+        g.fillRect(x, y, 14, SEG);
+      }
+    }
+    g.globalAlpha = 1;
+    // knobs only get a new angle when it really changed (fewer style updates = no memory creep)
+    const bass = (v[0] + v[1]) / 2, treble = (v[7] + v[8] + v[9]) / 3;
+    [[$("bass"), bass, 0], [$("treble"), treble, 1]].forEach(([el, val, k]) => {
+      if (Math.abs(val - lastKnob[k]) > 0.01) { lastKnob[k] = val; el.style.transform = `rotate(${-135 + 270 * val}deg)`; }
+    });
+  }
+
+  window.addEventListener("pywebviewready", async () => {
+    setTheme(await pywebview.api.pref("theme-silverdeck"));
+    const vis = (await pywebview.api.pref("viz")) !== "off";
+    body.classList.toggle("viz-on", vis); setViz(vis);
+    body.classList.toggle("ontop", await pywebview.api.on_top());
+    lights();
+  });
+</script>
+</body>
+</html>

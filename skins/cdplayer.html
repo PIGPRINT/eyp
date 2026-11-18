@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>CD Player</title>
+<style>
+  /* Win98 look = one grey + 3D bevels made from light/dark borders */
+  :root { --face:#c0c0c0; --light:#fff; --shade:#808080; --dark:#000; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--face); overflow:hidden; user-select:none;
+               font:11px Tahoma, "MS Sans Serif", sans-serif; }
+
+  .raised { background:var(--face); border:1px solid; border-color:var(--light) var(--dark) var(--dark) var(--light);
+            box-shadow:inset -1px -1px var(--shade), inset 1px 1px #dfdfdf; }
+  .sunken { border:1px solid; border-color:var(--shade) var(--light) var(--light) var(--shade);
+            box-shadow:inset 1px 1px var(--dark); }
+  button.raised:active:not(:disabled) { border-color:var(--dark) var(--light) var(--light) var(--dark);
+                                        box-shadow:inset 1px 1px var(--shade); }
+
+  .win { height:100%; display:flex; flex-direction:column; border-width:2px; }
+  .titlebar { height:20px; margin:2px; padding:0 2px 0 3px; display:flex; align-items:center; gap:4px;
+              background:linear-gradient(90deg,#000080,#1084d0); color:#fff; font-weight:bold; font-size:12px; }
+  .titlebar .drag { flex:1; height:100%; display:flex; align-items:center; gap:4px; }
+  .tbtn { width:16px; height:14px; padding:0; font:bold 10px/1 Tahoma, sans-serif; color:#000; }
+  .tbtn.close { margin-left:2px; }
+
+  .main { flex:1; display:flex; gap:10px; padding:8px 10px 10px; }
+  .cover { width:140px; height:140px; flex:none; background:#a8a8a8; display:grid; place-items:center; overflow:hidden; }
+  .cover img { width:100%; height:100%; object-fit:cover; }
+  .cd { width:96px; height:96px; border-radius:50%; /* empty-state disc drawn with CSS, no image file */
+        background:radial-gradient(circle,#c0c0c0 0 8px,#808080 9px 10px,#e8e8e8 11px 30px,#d0d0d0 31px 47px,#808080 48px); }
+
+  .right { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .row { display:flex; align-items:center; gap:4px; height:24px; }
+  .row label { width:38px; font-weight:bold; }
+  .field { flex:1; min-width:0; height:22px; background:#fff; display:flex; align-items:center; padding-left:4px; position:relative; }
+  .field .text { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .field .tag { color:#000; padding:0 4px; max-width:45%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tag:not(:empty)::before { content:"<"; }  /* the <D:> look; the brain only sends plain text */
+  .tag:not(:empty)::after { content:">"; }
+  .arrow { width:16px; height:18px; margin-right:1px; display:grid; place-items:center; font-size:8px; position:relative; }
+  /* a real <select>, invisible, laid over the arrow: we get a working dropdown for free */
+  .arrow select { position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+  .seek { width:100%; margin:6px 0 2px; -webkit-appearance:none; appearance:none; height:20px; background:transparent; }
+  .seek::-webkit-slider-runnable-track { height:4px; border:1px solid; border-color:var(--shade) var(--light) var(--light) var(--shade); background:#000; }
+  .seek::-webkit-slider-thumb { -webkit-appearance:none; width:11px; height:21px; margin-top:-9px; background:var(--face);
+        border:1px solid; border-color:var(--light) var(--dark) var(--dark) var(--light); box-shadow:inset -1px -1px var(--shade); }
+  .seek:disabled { opacity:.5; }
+
+  .ctrls { display:flex; gap:4px; }
+  .ctrls button { flex:1; height:26px; padding:0; font-size:11px; color:#000; }
+  .ctrls button:disabled { color:var(--shade); text-shadow:1px 1px var(--light); }
+  button.on { border-color:var(--dark) var(--light) var(--light) var(--dark); box-shadow:inset 1px 1px var(--shade); color:#c00; }
+
+  /* lyrics: a sunken white list box; the current line looks like a selected item */
+  body.lyrics-on .main { flex:none; }  /* lyrics box takes the leftover height instead of the player */
+  .lyrics { display:none; flex:1; min-height:0; margin:0 10px 10px; padding:6px 4px; background:#fff;
+            overflow-y:auto; position:relative; text-align:center; font-size:12px; line-height:1.5; }
+  body.lyrics-on .lyrics { display:block; }
+  .lyrics p { margin:0; padding:1px 6px; }
+  .lyrics.synced p { color:var(--shade); }
+  .lyrics p.now { background:#000080; color:#fff; }
+  .lyrics p.empty { color:var(--shade); }
+
+  /* right-click menu, Win98 style */
+  .menu { position:fixed; z-index:9; min-width:110px; padding:2px; background:var(--face); border:1px solid;
+          border-color:var(--light) var(--dark) var(--dark) var(--light); box-shadow:inset -1px -1px var(--shade); }
+  .menu .item { padding:3px 14px 3px 6px; white-space:pre; }
+  .menu .item:hover { background:#000080; color:#fff; }
+
+  /* compact mode: hide everything except the two text rows */
+  body.compact .cover, body.compact .seek, body.compact .ctrls, body.compact .lyrics { display:none; }
+  body.compact .main { padding:4px 8px; }
+</style>
+</head>
+<body>
+<div class="win raised">
+  <div class="titlebar">
+    <div class="drag pywebview-drag-region">💿 CD Player</div>
+    <button class="tbtn raised" title="Minimize" onclick="pywebview.api.minimize()">_</button>
+    <button class="tbtn raised" title="Compact mode" onclick="toggleCompact()">□</button>
+    <button class="tbtn raised close" title="Close" onclick="pywebview.api.close()">✕</button>
+  </div>
+
+  <div class="main">
+    <div class="cover sunken"><div class="cd" id="cd"></div><img id="cover" hidden alt=""></div>
+    <div class="right">
+      <div class="row"><label>Artist:</label>
+        <div class="field sunken"><span class="text" id="artist"></span>
+          <div class="arrow raised">▼<select class="pick"></select></div></div></div>
+      <div class="row"><label>Track:</label>
+        <div class="field sunken"><span class="text" id="title"></span><span class="tag" id="album"></span>
+          <div class="arrow raised">▼<select class="pick"></select></div></div></div>
+      <input class="seek" id="seek" type="range" min="0" max="1" step="any" value="0" disabled>
+      <div class="ctrls">
+        <button class="raised" title="Previous" onclick="send('skip_previous')">◀◀</button>
+        <button class="raised" title="Next" onclick="send('skip_next')">▶▶</button>
+        <button class="raised" title="Play / Pause" id="play" onclick="send('toggle_play_pause')">▶</button>
+        <button class="raised" title="Stop" onclick="send('stop')">■</button>
+        <button class="raised" title="Lyrics" id="lyrBtn" onclick="toggleLyrics()">●</button>
+      </div>
+    </div>
+  </div>
+  <div class="lyrics sunken" id="lyrics"></div>
+</div>
+
+<script>const STYLE = { full:[460, 190], compact:[460, 96], lyrics:190, empty:"<No disc>", material:"plastic" };</script>
+<script src="widget.js"></script>
+</body>
+</html>

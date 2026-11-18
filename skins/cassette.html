@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cassette</title>
+<style>
+  /* album colours: --album is the cover's main colour (set by widget.js); everything tinted is mixed from it */
+  :root { --paper:#f4ecd8; --ink:#1d2a5c; }
+  body { --a:var(--album, #3a6fd8);
+         --body1:color-mix(in srgb, var(--a) 45%, #2b3242); --body2:color-mix(in srgb, var(--a) 25%, #0c1018);
+         --stripe1:var(--a); --stripe2:color-mix(in srgb, var(--a) 55%, #f2c14e);
+         --orange:color-mix(in srgb, var(--a) 40%, #ffd9a0); }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; user-select:none; font:12px "Segoe UI", sans-serif; background:#111; }
+  .hand { font-family:"Segoe Print", "Ink Free", cursive; }  /* handwriting fonts that ship with Windows */
+
+  /* player body: tinted metal with a brushed texture, lit from the top */
+  .body { height:100%; display:flex; flex-direction:column; padding:0 14px 14px;
+          background:repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px),
+                     linear-gradient(var(--body1), var(--body2));
+          box-shadow:inset 0 1px rgba(255,255,255,.35), inset 0 0 0 1px rgba(0,0,0,.6), inset 0 -20px 30px rgba(0,0,0,.25); }
+
+  .top { height:32px; flex:none; display:flex; align-items:center; gap:6px; }
+  .top .drag { flex:1; height:100%; display:flex; align-items:center; color:var(--orange);
+               font:bold 10px "Segoe UI"; letter-spacing:3px; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .dot { width:16px; height:16px; padding:0; border:none; border-radius:50%; cursor:pointer;
+         font:bold 9px/1 sans-serif; color:#333; background:radial-gradient(circle at 35% 30%, #fff, #8d8d8d);
+         box-shadow:0 2px 3px rgba(0,0,0,.7); }
+  .dot:active { box-shadow:inset 0 1px 2px #000; }
+
+  /* the deck bay: a dark recess the tape sits down inside (shadow falls on its top edge) */
+  .bay { flex:none; padding:10px; border-radius:10px; background:linear-gradient(#0c0e12, #1b1f27);
+         box-shadow:inset 0 5px 12px rgba(0,0,0,.85), inset 0 -1px rgba(255,255,255,.08), 0 1px rgba(255,255,255,.18); }
+
+  /* the tape: real Compact Cassette proportions, 100.4 x 63.8 mm */
+  .cassette { position:relative; aspect-ratio:100.4 / 63.8; border-radius:7px; padding:5% 5% 0;
+              background:linear-gradient(#34363b, #1b1c20 60%, #121316);
+              box-shadow:0 8px 14px rgba(0,0,0,.75), 0 2px 3px rgba(0,0,0,.6),           /* cast onto the bay floor */
+                         inset 0 1px rgba(255,255,255,.18), inset 0 -3px 4px rgba(0,0,0,.6),  /* bevelled plastic edge */
+                         inset 0 0 0 1px #000; }
+  .screw { position:absolute; width:9px; height:9px; border-radius:50%;
+           background:radial-gradient(circle, #222 0 1px, transparent 1.5px),
+                      linear-gradient(45deg, transparent 45%, #333 45% 55%, transparent 55%),   /* the cross-slot */
+                      radial-gradient(circle at 40% 35%, #c9c9c9, #6b6b6b);
+           box-shadow:0 1px 1px rgba(255,255,255,.15), inset 0 -1px 1px rgba(0,0,0,.5); }
+  .s1 { top:2.5%; left:2%; } .s2 { top:2.5%; right:2%; } .s3 { bottom:3%; left:2%; } .s4 { bottom:3%; right:2%; }
+  .s5 { bottom:5%; left:50%; margin-left:-4.5px; }
+
+  /* paper label: raised a hair off the plastic, colour stripes from the album */
+  .label { position:relative; height:68%; border-radius:4px; padding:7px 8px 6px; color:var(--ink);
+           display:flex; flex-direction:column;
+           background:linear-gradient(transparent 0 70%, var(--stripe1) 70% 75%, var(--stripe2) 75% 80%, transparent 80%),
+                      linear-gradient(#f8f1df, var(--paper));
+           box-shadow:0 2px 3px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.7), inset 0 0 12px rgba(120,90,40,.15); }
+  .labtop { display:flex; gap:8px; min-height:0; }
+  .cover { width:52px; height:52px; flex:none; display:grid; place-items:center; overflow:hidden;
+           background:#ddd2b6; box-shadow:1px 2px 3px rgba(0,0,0,.45); transform:rotate(-2deg); }  /* stuck on by hand */
+  .cover img { width:100%; height:100%; object-fit:cover; }
+  .cd { font-size:22px; opacity:.4; }
+  .cd::before { content:"♪"; }
+  .info { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.25; }
+  .line { display:flex; align-items:baseline; gap:6px; }
+  .side { font:900 18px/1 "Segoe UI"; }
+  .ell { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  #artist { font-size:13px; font-weight:bold; flex:1; }
+  #title { font-size:12px; }
+  #album { font-size:10px; opacity:.7; }
+
+  /* the window: recessed smoked plastic you see the reels through */
+  .window { margin:auto auto 0; width:64%; height:40px; display:flex; align-items:center; justify-content:space-between;
+            padding:0 10px; border-radius:20px; background:rgba(70,55,40,.55);
+            box-shadow:inset 0 3px 6px rgba(0,0,0,.7), inset 0 -1px 1px rgba(255,255,255,.25), 0 1px rgba(255,255,255,.5); }
+  .spool { width:38px; height:38px; display:grid; place-items:center; position:relative; }
+  /* tape wound on each reel: left shrinks, right grows as the song plays (--progress from widget.js) */
+  .tape { position:absolute; border-radius:50%; aspect-ratio:1; background:radial-gradient(circle, #3a210d 55%, #1e1006);
+          box-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .left  .tape { width:calc(20px + 18px * (1 - var(--progress, 0))); }
+  .right .tape { width:calc(20px + 18px * var(--progress, 0)); }
+  .reel { width:20px; height:20px; border-radius:50%; position:relative;
+          background:radial-gradient(circle, #222 0 3px, transparent 3.5px),
+                     repeating-conic-gradient(#f2f2f2 0 40deg, #555 40deg 60deg);  /* 6 teeth */
+          box-shadow:0 1px 2px rgba(0,0,0,.5); animation:spin 1.6s linear infinite paused; }
+  body.playing .reel { animation-play-state:running; }
+  @keyframes spin { to { transform:rotate(-360deg); } }
+
+  /* the trapezoid at the bottom where the tape head touches: two drive holes + pin slots */
+  .head { position:absolute; left:50%; bottom:0; width:62%; height:19%; transform:translateX(-50%);
+          clip-path:polygon(7% 0, 93% 0, 100% 100%, 0 100%);
+          background:radial-gradient(circle at 18% 55%, #050505 0 4px, transparent 5px),
+                     radial-gradient(circle at 82% 55%, #050505 0 4px, transparent 5px),
+                     linear-gradient(90deg, transparent 40%, #0a0a0a 40% 43%, transparent 43% 57%, #0a0a0a 57% 60%, transparent 60%)
+                       center 70% / 100% 35% no-repeat,
+                     linear-gradient(#2c2e33, #1d1e22);
+          box-shadow:inset 0 1px rgba(255,255,255,.12); }
+
+  /* seek: an album-coloured strip of "tape" */
+  .seek { width:100%; margin:10px 0 0; height:16px; -webkit-appearance:none; appearance:none; background:transparent; }
+  .seek::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:rgba(0,0,0,.55); box-shadow:inset 0 1px 2px #000, 0 1px rgba(255,255,255,.15); }
+  .seek::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; margin-top:-5px; border-radius:50%;
+                                background:radial-gradient(circle at 35% 30%, #fff, var(--orange) 60%); box-shadow:0 2px 3px rgba(0,0,0,.7); }
+  .seek:disabled { opacity:.4; }
+
+  /* chunky piano keys: the thick bottom shadow is the key's side; pressing moves the key down onto it */
+  .keys { display:flex; gap:5px; margin-top:6px; flex:none; }
+  .keys button { position:relative; flex:1; height:32px; border:none; border-radius:3px 3px 6px 6px; cursor:pointer;
+                 font:13px sans-serif; color:#222; background:linear-gradient(#f7f7f7, #b9b9b9);
+                 box-shadow:0 4px 0 #6a6a6a, 0 7px 6px rgba(0,0,0,.55), inset 0 1px #fff;
+                 transition:transform .05s, box-shadow .05s; }
+  .keys button:active, .keys button.on { transform:translateY(3px); box-shadow:0 1px 0 #6a6a6a, 0 2px 3px rgba(0,0,0,.5); }
+  .keys button.on { color:#d22; }
+  .keys select { position:absolute; inset:0; opacity:0; cursor:pointer; }  /* eject key = invisible source dropdown */
+
+  /* lyrics: the paper insert from the tape case, lined paper, highlighter on the current line */
+  .lyrics { display:none; flex:1; min-height:0; margin-top:14px; padding:0 12px; overflow-y:auto; position:relative;
+            border-radius:3px; color:var(--ink); text-align:center; font-size:13px; line-height:24px;
+            background:repeating-linear-gradient(transparent 0 23px, #c9d6ea 23px 24px) local, var(--paper);
+            box-shadow:0 3px 8px rgba(0,0,0,.5); }
+  body.lyrics-on .lyrics { display:block; }
+  .lyrics p { margin:0; }
+  .lyrics.synced p { opacity:.45; }
+  .lyrics p.now { opacity:1; background:linear-gradient(transparent 25%, #fff36b 25% 85%, transparent 85%); }
+  .lyrics p.empty { opacity:.6; }
+
+  .menu { position:fixed; z-index:9; min-width:110px; padding:4px 0; border-radius:4px; background:var(--paper);
+          color:var(--ink); box-shadow:0 3px 8px rgba(0,0,0,.5); }
+  .menu .item { padding:4px 14px 4px 8px; white-space:pre; cursor:pointer; }
+  .menu .item:hover { background:var(--orange); }
+
+  /* compact: just the label text */
+  body.compact .cover, body.compact .window, body.compact .head, body.compact .screw,
+  body.compact .seek, body.compact .keys, body.compact .lyrics { display:none; }
+  body.compact .cassette { aspect-ratio:auto; padding:6px; }
+  body.compact .label { height:auto; }
+</style>
+</head>
+<body>
+<div class="body">
+  <div class="top">
+    <div class="drag pywebview-drag-region">STEREO CASSETTE PLAYER</div>
+    <button class="dot" title="Minimize" onclick="pywebview.api.minimize()">–</button>
+    <button class="dot" title="Compact mode" onclick="toggleCompact()">□</button>
+    <button class="dot" title="Close" onclick="pywebview.api.close()">✕</button>
+  </div>
+
+  <div class="bay">
+    <div class="cassette">
+      <i class="screw s1"></i><i class="screw s2"></i><i class="screw s3"></i><i class="screw s4"></i><i class="screw s5"></i>
+      <div class="label">
+        <div class="labtop">
+          <div class="cover"><div class="cd" id="cd"></div><img id="cover" hidden alt=""></div>
+          <div class="info hand">
+            <div class="line"><span class="side">A</span><span class="ell" id="artist"></span></div>
+            <div class="ell" id="title"></div>
+            <div class="ell" id="album"></div>
+          </div>
+        </div>
+        <div class="window">
+          <div class="spool left"><div class="tape"></div><div class="reel"></div></div>
+          <div class="spool right"><div class="tape"></div><div class="reel"></div></div>
+        </div>
+      </div>
+      <div class="head"></div>
+    </div>
+  </div>
+
+  <input class="seek" id="seek" type="range" min="0" max="1" step="any" value="0" disabled>
+  <div class="keys">
+    <button title="Eject: pick source">⏏<select class="pick"></select></button>
+    <button title="Previous" onclick="send('skip_previous')">◀◀</button>
+    <button title="Next" onclick="send('skip_next')">▶▶</button>
+    <button title="Play / Pause" id="play" onclick="send('toggle_play_pause')">▶</button>
+    <button title="Stop" onclick="send('stop')">■</button>
+    <button title="Lyrics" id="lyrBtn" onclick="toggleLyrics()">●</button>
+  </div>
+  <div class="lyrics hand" id="lyrics"></div>
+</div>
+
+<script>const STYLE = { full:[380, 352], compact:[380, 130], lyrics:200, empty:"No tape", material:"mech" };</script>
+<script src="widget.js"></script>
+</body>
+</html>
